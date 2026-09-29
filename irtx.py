@@ -31,6 +31,12 @@ class TiqiaaTx:
         dev = usb.core.find(idVendor=0x10c4, idProduct=0x8468)
         if dev is None: raise FileNotFoundError('Tiqiaa dongle 10c4:8468 not found')
         self.t, self.dev = t, t.TiqiaaUsbIr(dev)
+        # after a replug or an aborted transfer the dongle can hold a stale reply; let the read
+        # thread collect it, then drop it, or the first command's reply-id check fails
+        time.sleep(0.3)
+        try:
+            while True: self.dev.replies.get_nowait()
+        except Exception: pass
     def send(self, codes):
         air = sum(abs(c) for c in codes) / 1e6
         self.dev.SendIR(38000, self.t.TiqiaaIrSignal(codes).ToTiqiaa())
