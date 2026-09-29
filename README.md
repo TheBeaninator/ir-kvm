@@ -28,7 +28,7 @@ receivers on one blaster.
 | IR transmitter on the control machine | Either **a XIAO RP2040 node with an IR LED on D9** (same firmware, node id 255 = blaster only), or a Tiqiaa "Tview" USB IR transceiver (`lsusb`: `10c4:8468 Silicon Labs Tview`, ~$8, the ZaZaRemote phone-app blaster; vendor HID, no kernel driver, driven with pyusb). |
 | IR LED + driver (for the transmitter node) | 940 nm IR LED, NPN transistor (2N2222/BC337/S8050), 1 kΩ base resistor, LED series resistor sized for ~100 mA pulses from 5V (~33 Ω). |
 | 5-to-1 HDMI switch with IR remote | Ours answers NEC address `0x80`; codes in `codes.json`. Any IR-controlled switch works once you find its codes (see `irprobe.py`). |
-| USB HDMI capture card | Anything V4L2 sees. |
+| USB HDMI capture stick | Anything V4L2 sees. Tested: MacroSilicon MS2109 (`534d:2109 USB Video`), the $10 "USB 3.0 HDMI Video Capture" stick. It is USB 2 inside: 1080p10 or 720p30 are clean, 1080p30 / 720p60 overrun the bus. |
 | Seeed XIAO RP2040 **or** XIAO ESP32S3 (one per target) | Same footprint and pinout. RP2040 is the recommended one: no WiFi/Bluetooth on the board at all. |
 | CH0038K / any 38 kHz 3-pin IR receiver (one per XIAO) | VS1838B, TSOP38238, CHQ1838 etc. all work. Active-low output. |
 
@@ -75,6 +75,12 @@ irkbd.py --node 3 type "ls -la\n"
 irkbd.py --node 3 key ctrl-alt-t
 irkbd.py --node 3 release
 kvm 3 type "hello\n"          # switch to input 3 and type on node 3
+```
+
+```
+screen.py grab -o now.jpg          # one frame from the capture stick (1080p10 by default, ~4 s cold)
+screen.py serve &                  # keep the latest frame in /dev/shm/irkvm-screen.jpg; grab is then instant
+screen.py stop | info
 ```
 
 Convention: HDMI input *N* carries the machine whose XIAO has node id *N*. Node 0 is broadcast.
@@ -163,6 +169,7 @@ firmware never initialises its WiFi or Bluetooth, but the hardware is still ther
 | `hdmi-switch` | CLI for the HDMI switch (`codes.json`) |
 | `irkbd.py` | IR keyboard bus sender |
 | `kvm` | `hdmi-switch` + `irkbd.py` in one call |
+| `screen.py` | the V: grab a frame from the capture stick, or serve the latest one from /dev/shm |
 | `irkbd-firmware/` | receiver firmware for XIAO RP2040 / ESP32S3 (Arduino) |
 | `irsend.py` | send one NEC frame (addr, cmd) |
 | `irprobe.py` | Tk helper for discovering a device's IR codes |
