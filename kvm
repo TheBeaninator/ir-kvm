@@ -4,9 +4,20 @@
 #   kvm 3 type "ls\n"       switch, then type on node 3
 #   kvm 3 key ctrl-alt-t    switch, then send a chord to node 3
 # Convention: HDMI input N carries the machine whose XIAO has node id N.
+#
+# Cheap switches drop hot-plug on unselected inputs and some GPUs never re-detect (see README).
+# If this machine is itself on the switch, set IRKVM_SELF=<its input> and, on amdgpu, this script
+# re-triggers hot-plug locally after selecting it: needs passwordless sudo for the debugfs write.
+#   IRKVM_SELF=1 IRKVM_SELF_CONNECTOR=HDMI-A-1 kvm 1
 set -e
 HERE=$(dirname "$(readlink -f "$0")")
 n=$1; shift || true
 [ -n "$n" ] || { sed -n 2,6p "$0"; exit 2; }
 "$HERE/hdmi-switch" "$n"
+if [ "$n" = "${IRKVM_SELF:-}" ]; then
+  conn=${IRKVM_SELF_CONNECTOR:-HDMI-A-1}
+  f=$(ls /sys/kernel/debug/dri/*/"$conn"/trigger_hotplug 2>/dev/null | head -1 || true)
+  [ -n "$f" ] || f=$(sudo -n sh -c "ls /sys/kernel/debug/dri/*/$conn/trigger_hotplug 2>/dev/null | head -1" || true)
+  if [ -n "$f" ]; then sleep 1; echo 1 | sudo -n tee "$f" >/dev/null && echo "re-triggered hot-plug on $conn"; fi
+fi
 [ $# -eq 0 ] || exec python3 "$HERE/irkbd.py" --node "$n" "$@"
