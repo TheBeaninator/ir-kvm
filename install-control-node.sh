@@ -5,7 +5,12 @@
 set -e
 cd "$(dirname "$0")"
 python3 -c 'import usb.core' 2>/dev/null || apt-get install -y python3-usb
+python3 -c 'import serial' 2>/dev/null || apt-get install -y python3-serial
+usermod -aG plugdev,dialout "${SUDO_USER:-$USER}"
 install -m 644 99-tiqiaa-ir.rules /etc/udev/rules.d/
 udevadm control --reload && udevadm trigger -s usb
 ln -sf "$(pwd)/hdmi-switch" /usr/local/bin/hdmi-switch
-echo "installed; plug in the dongle and run: hdmi-switch list && hdmi-switch 1"
+ln -sf "$(pwd)/kvm" /usr/local/bin/kvm
+ln -sf "$(pwd)/irkbd.py" /usr/local/bin/irkbd
+echo "installed; plug in the transmitter (dongle or IR-LED node) and run: hdmi-switch list && hdmi-switch 1"
+echo "(log out and back in for the plugdev/dialout group membership to apply)"

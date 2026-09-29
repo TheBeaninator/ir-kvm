@@ -1,6 +1,7 @@
 # ir-kvm
 
-A ~$30 out-of-band KVM built from infrared. One USB IR blaster on a control machine drives:
+A ~$30 out-of-band KVM built from infrared. One IR transmitter on a control machine (a XIAO RP2040
+node with an IR LED, or a Tiqiaa USB blaster) drives:
 
 - a **5-to-1 HDMI switch** (its normal IR remote codes) whose output feeds a USB capture card, and
 - any number of **IR-bus USB keyboards**: a Seeed XIAO ESP32S3 with a 38 kHz IR receiver, plugged
@@ -24,10 +25,11 @@ receivers on one blaster.
 
 | Part | Notes |
 |---|---|
-| Tiqiaa "Tview" USB IR transceiver | `lsusb`: `10c4:8468 Silicon Labs Tview`. Sold for the ZaZaRemote / Tiqiaa phone app, ~$8. Vendor HID with bulk endpoints; no kernel driver, driven with pyusb. Makes its own ~36.6 kHz carrier. |
+| IR transmitter on the control machine | Either **a XIAO RP2040 node with an IR LED on D9** (same firmware, node id 255 = blaster only), or a Tiqiaa "Tview" USB IR transceiver (`lsusb`: `10c4:8468 Silicon Labs Tview`, ~$8, the ZaZaRemote phone-app blaster; vendor HID, no kernel driver, driven with pyusb). |
+| IR LED + driver (for the transmitter node) | 940 nm IR LED, NPN transistor (2N2222/BC337/S8050), 1 kΩ base resistor, LED series resistor sized for ~100 mA pulses from 5V (~33 Ω). |
 | 5-to-1 HDMI switch with IR remote | Ours answers NEC address `0x80`; codes in `codes.json`. Any IR-controlled switch works once you find its codes (see `irprobe.py`). |
 | USB HDMI capture card | Anything V4L2 sees. |
-| Seeed XIAO ESP32S3 (one per target) | Native USB OTG → TinyUSB HID keyboard. See "Radios" below. |
+| Seeed XIAO RP2040 **or** XIAO ESP32S3 (one per target) | Same footprint and pinout. RP2040 is the recommended one: no WiFi/Bluetooth on the board at all. |
 | CH0038K / any 38 kHz 3-pin IR receiver (one per XIAO) | VS1838B, TSOP38238, CHQ1838 etc. all work. Active-low output. |
 
 ### Wiring the receiver to the XIAO
@@ -41,7 +43,19 @@ receiver GND ─▶ GND
 receiver VCC ─▶ 3V3
 ```
 
-Point the dome at the blaster. Range is a few metres; the blaster is not fussy about aim.
+Point the dome at the transmitter. Range is a few metres; the transmitter is not fussy about aim.
+
+### Wiring the IR LED (transmitter node, RP2040 only)
+
+```
+D9 (GPIO4) ─ 1 kΩ ─ base of NPN
+5V ─ 33 Ω ─ IR LED anode;  IR LED cathode ─ collector;  emitter ─ GND
+```
+
+The firmware puts a 38 kHz, 33 % duty carrier on D9 during marks. Driving the LED straight from the
+pin (≈ 12 mA) works across a desk; the transistor gets you across the room. Set the node's id to 255
+(`id 255` over serial) so it never types on the control machine, and leave its receiver unpopulated
+or ignore it. The tools find it automatically (see `irtx.py`); `IRKVM_TX=/dev/ttyACM0` pins it.
 
 ## Install (control machine)
 
@@ -50,7 +64,8 @@ sudo bash install-control-node.sh     # udev rule for the dongle, python3-usb, s
 hdmi-switch list && hdmi-switch 1
 ```
 
-Needs only `python3`, `python3-usb` (pyusb) and `libusb-1.0`. Works offline.
+Needs only `python3` plus `python3-serial` for a transmitter node, or `python3-usb` (pyusb) and
+`libusb-1.0` for the Tiqiaa dongle. Works offline.
 
 ## Use
 
@@ -68,23 +83,43 @@ Convention: HDMI input *N* carries the machine whose XIAO has node id *N*. Node 
 
 ## Flash a receiver
 
-Uses [arduino-cli](https://arduino.github.io/arduino-cli/) with the `esp32:esp32` core.
+One sketch, two boards. Uses [arduino-cli](https://arduino.github.io/arduino-cli/).
+
+**XIAO RP2040** (core `rp2040:rp2040` from
+`https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`):
 
 ```
 cd irkbd-firmware
-arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32S3:USBMode=default,CDCOnBoot=default --output-dir build .
-arduino-cli upload  --fqbn esp32:esp32:XIAO_ESP32S3:USBMode=default,CDCOnBoot=default -p /dev/ttyACM0 --input-dir build .
+arduino-cli compile --fqbn rp2040:rp2040:seeed_xiao_rp2040:usbstack=tinyusb --output-dir build-rp2040 .
+arduino-cli upload  --fqbn rp2040:rp2040:seeed_xiao_rp2040:usbstack=tinyusb -p /dev/ttyACM0 --input-dir build-rp2040 .
 ```
 
-The first upload attempt often fails while the board re-enumerates into its bootloader; just run it
-again. Then set the node id over the board's serial port (it keeps it in flash):
+A blank XIAO RP2040 shows up as a USB drive (RPI-RP2) instead of a serial port; then use
+`arduino-cli upload ... -p <mount point>` or just copy `build-rp2040/irkbd-firmware.ino.uf2` onto it.
+
+**XIAO ESP32S3** (core `esp32:esp32`):
+
+```
+cd irkbd-firmware
+arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32S3:USBMode=default,CDCOnBoot=default --output-dir build-esp32s3 .
+arduino-cli upload  --fqbn esp32:esp32:XIAO_ESP32S3:USBMode=default,CDCOnBoot=default -p /dev/ttyACM0 --input-dir build-esp32s3 .
+```
+
+The first ESP32S3 upload attempt often fails while the board re-enumerates into its bootloader;
+just run it again.
+
+Either way, then set the node id over the board's serial port (it keeps it in flash):
 
 ```
 $ python3 -m serial.tools.miniterm /dev/ttyACM0 115200
-id 3          -> node id = 3 (saved)
+id 3          -> node id = 3 (saved)        (255 = blaster only, never types)
+ping          -> irkvm rp2040 id=3 tx=1
 stat          -> pin=1 edges=... frames=... crcerr=...   (bring-up diagnostics)
 raw on        -> dumps every pulse/space and decoder state transition
 ```
+
+Transmitter nodes also take `irkb <hex>` (an IRKB frame, fast timing), `nec <addr> <cmd>` and
+`raw +mark -space ...` and answer `ok` once the frame is out; that is what `irtx.py` speaks.
 
 ## Protocol ("IRKB")
 
@@ -105,7 +140,7 @@ bytes, LSB first:
 Receivers drop a frame whose `seq` equals the last one they accepted, so a sender may repeat frames
 for reliability (`--twice`). `--nec` falls back to the slower classic timing.
 
-### Dongle quirks worth knowing
+### Tiqiaa dongle quirks worth knowing
 
 - It buffers about 392 bytes of pulse data (7 × 56-byte fragments); longer frames are truncated.
   Hence 16-character string frames.
@@ -117,9 +152,9 @@ for reliability (`--twice`). `--nec` falls back to the slower classic timing.
 
 ## Radios
 
-The XIAO ESP32S3 has WiFi and Bluetooth. This firmware never initialises either, but if you want a
-receiver with no radio at all, the XIAO RP2040 has the same footprint and pinout and native USB HID.
-A port is planned.
+The XIAO RP2040 has no radio, which is why it is the recommended receiver for an out-of-band device
+you want to trust. The XIAO ESP32S3 build is kept because that is what the first units were; the
+firmware never initialises its WiFi or Bluetooth, but the hardware is still there.
 
 ## Files
 
@@ -128,9 +163,10 @@ A port is planned.
 | `hdmi-switch` | CLI for the HDMI switch (`codes.json`) |
 | `irkbd.py` | IR keyboard bus sender |
 | `kvm` | `hdmi-switch` + `irkbd.py` in one call |
-| `irkbd-firmware/` | XIAO ESP32S3 receiver firmware (Arduino) |
+| `irkbd-firmware/` | receiver firmware for XIAO RP2040 / ESP32S3 (Arduino) |
 | `irsend.py` | send one NEC frame (addr, cmd) |
 | `irprobe.py` | Tk helper for discovering a device's IR codes |
+| `irtx.py` | transmitter abstraction: Tiqiaa dongle or serial node, auto-detected |
 | `tiqiaa_usb_ir.py` | Tiqiaa dongle driver (third-party, see NOTICE) |
 | `99-tiqiaa-ir.rules` | udev rule (group `plugdev`) |
 | `install-control-node.sh` | installer for the control machine |

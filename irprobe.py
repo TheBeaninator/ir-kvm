@@ -7,11 +7,10 @@ codes.json next to this script (used by hdmi-switch tooling).
 """
 import json, os, sys, time, tkinter as tk
 from tkinter import ttk
-import usb.core
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import tiqiaa_usb_ir as t
 from irsend import nec_envelope
+from irtx import open_tx
 CODES = os.path.join(HERE, 'codes.json')
 
 class App(tk.Tk):
@@ -39,9 +38,7 @@ class App(tk.Tk):
 
     def open(self):
         if self.dev is None:
-            d = usb.core.find(idVendor=0x10c4, idProduct=0x8468)
-            if d is None: raise RuntimeError('dongle 10c4:8468 not found')
-            self.dev = t.TiqiaaUsbIr(d)
+            self.dev = open_tx()
         return self.dev
 
     def out(self, s):
@@ -50,9 +47,9 @@ class App(tk.Tk):
     def send(self, cmd=None):
         try:
             a = int(self.addr.get(), 0); c = int(self.cmd.get(), 0) if cmd is None else cmd
-            data = t.TiqiaaIrSignal(nec_envelope(a, c)).ToTiqiaa()
+            codes = nec_envelope(a, c)
             for _ in range(self.rep.get()):
-                self.open().SendIR(38000, data); time.sleep(0.1)
+                self.open().send(codes); time.sleep(0.05)
             self.out(f'sent addr=0x{a:02X} cmd=0x{c:02X}')
         except Exception as e:
             self.out(f'ERROR {e}'); self.dev = None

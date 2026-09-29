@@ -17,6 +17,7 @@ Frames are sent once by default (--twice to double up); a receiver drops a repea
 Bit timing: fast (350/350/1000 us, lead space 2250) by default, --nec for classic NEC (lead space 4500).
 Throughput ~70 chars/s in fast mode (16-char string frames; the dongle buffers ~392 bytes of pulses).
 Node selection: --node N or env IRKBD_NODE (default 0 = broadcast).
+Transmitter: the Tiqiaa dongle or an ir-kvm node with an IR LED, see irtx.py ($IRKVM_TX).
 """
 import argparse, os, sys, time
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -55,38 +56,21 @@ def crc8(data, poly=0x07):
 
 STRING_CHUNK = 16   # chars per string frame: the dongle buffers ~392 bytes of pulse data (7×56), a 20-byte frame is ~323
 
-# Bit timings (mark, space0, space1). The lead space tells the receiver which one is in use:
-# 4500 us = classic NEC timing, 2250 us = fast timing.
-TIMING = {'nec': (4500, 560, 560, 1690), 'fast': (2250, 350, 350, 1000)}
+from irtx import open_tx, frame_codes, TIMING
 
 def nec_bits(b, timing='fast'):
-    lead_space, mark, sp0, sp1 = TIMING[timing]
-    codes = [9000, -lead_space]
-    for byte in b:
-        for i in range(8):
-            codes += [mark, -sp1 if (byte >> i) & 1 else -sp0]
-    return codes + [mark, -5000]
+    return frame_codes(b, fast=(timing == 'fast'))
 
 class Sender:
-    def __init__(self, node=0, times=1, gap=0.02, timing='fast'):
+    def __init__(self, node=0, times=1, timing='fast', tx=None):
         self.node = node; self.timing = timing
-        import usb.core, tiqiaa_usb_ir as t
-        self.t = t
-        dev = usb.core.find(idVendor=0x10c4, idProduct=0x8468)
-        if dev is None: sys.exit('Tiqiaa IR dongle (10c4:8468) not found')
-        self.dev = t.TiqiaaUsbIr(dev)
+        self.tx = tx or open_tx()
         self.seq = int(time.time()) & 0xF  # start pseudo-random so a restart doesn't collide with the last seq
-        self.times, self.gap = times, gap
+        self.times = times
     def _send(self, body):
         frame = body + bytes([crc8(body)])
-        codes = nec_bits(frame, self.timing)
-        airtime = sum(abs(c) for c in codes) / 1e6
-        data = self.t.TiqiaaIrSignal(codes).ToTiqiaa()
         for _ in range(self.times):
-            self.dev.SendIR(38000, data)   # blocks ~until the dongle has emitted the frame...
-            # ...but it acks slightly before the last pulses are out, and a new Data command then clobbers
-            # the buffer. Measured: 0.1x air time is enough; 0 breaks 4 of 5 frames.
-            time.sleep(self.gap + 0.1 * airtime)
+            self.tx.send_bytes(frame, fast=(self.timing == 'fast'))
     def _hdr(self, ftype):
         self.seq = (self.seq + 1) & 0xF
         return bytes([self.node & 0xFF, ((ftype & 0xF) << 4) | self.seq])

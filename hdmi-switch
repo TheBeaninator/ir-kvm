@@ -6,9 +6,10 @@
   hdmi-switch list       show known buttons
   hdmi-switch send 0x1B  send a raw NEC command (addr from codes.json)
 
-Exit 0 on success (the dongle acknowledged the transmit; the switch itself gives no
-feedback, so confirm via the capture card). Exit 2 for usage, 1 for device errors.
-Codes live in codes.json next to this script.
+Exit 0 on success (the transmitter acknowledged; the switch itself gives no feedback, so
+confirm via the capture card). Exit 2 for usage, 1 for device errors.
+Codes live in codes.json next to this script. Transmitter: Tiqiaa dongle or an ir-kvm node
+with an IR LED (see irtx.py, $IRKVM_TX).
 """
 import json, os, sys, time
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -30,16 +31,12 @@ def main(argv):
         if arg not in buttons:
             print(f'unknown button {argv[1]!r}; known: {", ".join(buttons)}', file=sys.stderr); return 2
         cmd = int(buttons[arg], 0)
-    import usb.core
-    import tiqiaa_usb_ir as t
-    from irsend import nec_envelope
-    dev = usb.core.find(idVendor=0x10c4, idProduct=0x8468)
-    if dev is None:
-        print('Tiqiaa IR dongle (10c4:8468) not found', file=sys.stderr); return 1
-    d = t.TiqiaaUsbIr(dev)
-    data = t.TiqiaaIrSignal(nec_envelope(int(codes['addr'], 0), cmd)).ToTiqiaa()
+    from irtx import open_tx
+    addr = int(codes['addr'], 0)
+    tx = open_tx()
+    frame = bytes([addr & 0xFF, (~addr) & 0xFF, cmd & 0xFF, (~cmd) & 0xFF])
     for _ in range(2):  # send twice: the switch ignores one occasionally
-        d.SendIR(38000, data); time.sleep(0.1)
+        tx.send_bytes(frame, fast=False); time.sleep(0.05)
     print(f'ok {arg} (NEC {codes["addr"]}/0x{cmd:02X})')
     return 0
 
