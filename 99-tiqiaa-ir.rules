@@ -1,0 +1,3 @@
+# Tiqiaa "Tview" USB IR transceiver (lsusb: 10c4:8468 Silicon Labs Tview). Vendor-specific HID, no kernel driver;
+# driven from userspace via libusb (tiqiaa_usb_ir.py). Grant plugdev group rw access.
+SUBSYSTEM=="usb", ATTR{idVendor}=="10c4", ATTR{idProduct}=="8468", MODE="0660", GROUP="plugdev", TAG+="uaccess"

@@ -1,0 +1,12 @@
+#!/bin/bash
+# kvm — the cheap IR KVM: switch the HDMI 5-to-1 to input N and address the keyboard to node N.
+#   kvm 3                   select input 3 (video via hdmi-switch; keyboard node 3 for following calls)
+#   kvm 3 type "ls\n"       switch, then type on node 3
+#   kvm 3 key ctrl-alt-t    switch, then send a chord to node 3
+# Convention: HDMI input N carries the machine whose XIAO has node id N.
+set -e
+HERE=$(dirname "$(readlink -f "$0")")
+n=$1; shift || true
+[ -n "$n" ] || { sed -n 2,6p "$0"; exit 2; }
+"$HERE/hdmi-switch" "$n"
+[ $# -eq 0 ] || exec python3 "$HERE/irkbd.py" --node "$n" "$@"

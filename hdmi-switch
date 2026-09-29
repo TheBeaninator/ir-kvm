@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""hdmi-switch: select an input on the 5-to-1 HDMI switch via the Tiqiaa Tview USB IR dongle.
+
+  hdmi-switch 3          select input 3 (1-5)
+  hdmi-switch next       press the remote's Next button
+  hdmi-switch list       show known buttons
+  hdmi-switch send 0x1B  send a raw NEC command (addr from codes.json)
+
+Exit 0 on success (the dongle acknowledged the transmit; the switch itself gives no
+feedback, so confirm via the capture card). Exit 2 for usage, 1 for device errors.
+Codes live in codes.json next to this script.
+"""
+import json, os, sys, time
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+
+def main(argv):
+    codes = json.load(open(os.path.join(HERE, 'codes.json')))
+    buttons = codes['buttons']
+    if len(argv) < 2 or argv[1] in ('-h', '--help'):
+        print(__doc__); return 2
+    arg = argv[1].lower()
+    if arg == 'list':
+        for k, v in buttons.items(): print(f'{k:6} {v}')
+        return 0
+    if arg == 'send':
+        cmd = int(argv[2], 0)
+    else:
+        if arg.isdigit(): arg = 'in' + arg
+        if arg not in buttons:
+            print(f'unknown button {argv[1]!r}; known: {", ".join(buttons)}', file=sys.stderr); return 2
+        cmd = int(buttons[arg], 0)
+    import usb.core
+    import tiqiaa_usb_ir as t
+    from irsend import nec_envelope
+    dev = usb.core.find(idVendor=0x10c4, idProduct=0x8468)
+    if dev is None:
+        print('Tiqiaa IR dongle (10c4:8468) not found', file=sys.stderr); return 1
+    d = t.TiqiaaUsbIr(dev)
+    data = t.TiqiaaIrSignal(nec_envelope(int(codes['addr'], 0), cmd)).ToTiqiaa()
+    for _ in range(2):  # send twice: the switch ignores one occasionally
+        d.SendIR(38000, data); time.sleep(0.1)
+    print(f'ok {arg} (NEC {codes["addr"]}/0x{cmd:02X})')
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

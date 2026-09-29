@@ -1,0 +1,14 @@
+ir-kvm
+Copyright 2026 Nate Schoolfield
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party code
+----------------
+tiqiaa_usb_ir.py — Python driver for the Tiqiaa "Tview" USB IR transceiver.
+  Author: Norman Rasmussen, https://gitlab.com/normanr/tiqiaa-usb-ir-py
+  Based on the reverse-engineering work and code of "Xen" (XenRE),
+  https://gitlab.com/XenRE/tiqiaa-usb-ir and https://habr.com/ru/post/494800/
+  Neither upstream repository states a license; the file is included unmodified
+  with attribution. If you are the author and want it removed or relicensed,
+  open an issue.
