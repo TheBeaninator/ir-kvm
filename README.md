@@ -156,6 +156,23 @@ for reliability (`--twice`). `--nec` falls back to the slower classic timing.
   were found by probing with `irprobe.py` (a small Tk app: step through codes, label what works).
 - The carrier frequency argument is ignored by the hardware (fixed ~36.6 kHz).
 
+## HDMI switch gotcha: hot-plug detect
+
+Cheap HDMI switches pull hot-plug low on every input that is not selected. When you switch away
+from a machine and back, its GPU sees a disconnect and may never re-detect the display (seen with
+amdgpu on the Strix Halo box: connector stays "disconnected" until the cable is physically
+re-seated). Fixes, best first:
+
+1. **EDID emulator pass-through dongles** on each switch input (the $5 "HDMI EDID emulator" /
+   dummy-plug pass-throughs). The source then always sees a monitor. Needs nothing on the targets.
+2. On a Linux box you control, force the output: kernel parameters
+   `video=HDMI-A-1:1920x1080@60e drm.edid_firmware=HDMI-A-1:edid/1920x1080.bin` (the `e` keeps
+   the output enabled regardless of hot-plug; the EDID override avoids inheriting the switch's
+   own 800x600 EDID).
+3. Runtime kick on amdgpu, no reboot:
+   `echo 1 | sudo tee /sys/kernel/debug/dri/1/HDMI-A-1/trigger_hotplug`
+   (forcing `status` to `on` alone is not enough: fbcon only sets a mode on a hot-plug event).
+
 ## Radios
 
 The XIAO RP2040 has no radio, which is why it is the recommended receiver for an out-of-band device
