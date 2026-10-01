@@ -47,9 +47,8 @@ class App(tk.Tk):
     def send(self, cmd=None):
         try:
             a = int(self.addr.get(), 0); c = int(self.cmd.get(), 0) if cmd is None else cmd
-            codes = nec_envelope(a, c)
             for _ in range(self.rep.get()):
-                self.open().send(codes); time.sleep(0.05)
+                self.open().send_nec(a, c); time.sleep(0.05)
             self.out(f'sent addr=0x{a:02X} cmd=0x{c:02X}')
         except Exception as e:
             self.out(f'ERROR {e}'); self.dev = None

@@ -25,9 +25,8 @@ def main():
     a = ap.parse_args()
     from irtx import open_tx
     tx = open_tx()
-    codes = nec_envelope(a.addr, a.cmd)
     for _ in range(a.repeat):
-        tx.send(codes)
+        tx.send_nec(a.addr, a.cmd)
         time.sleep(0.05)
     print(f'sent NEC addr=0x{a.addr:02X} cmd=0x{a.cmd:02X} x{a.repeat} via {tx.name}')
 

@@ -1,14 +1,17 @@
 """irtx: one interface over the two IR transmitters ir-kvm supports.
 
   TiqiaaTx  — the Tiqiaa "Tview" USB dongle (10c4:8468), via tiqiaa_usb_ir.py
-  NodeTx    — an ir-kvm XIAO RP2040 node with an IR LED, over its USB serial port
+  NodeTx    — an ir-kvm node with an IR LED (XIAO RP2040 or an ATmega32U4 board such as the
+              DFRobot Beetle), over its USB serial port
 
 open_tx() picks one: $IRKVM_TX = "tiqiaa" | "/dev/ttyACM0" | "auto" (default). Auto prefers the
 dongle if present, else the first serial node that answers "ping" with tx=1.
 
-Both expose send(codes) where codes is a list of +mark/-space microseconds, and
-send_bytes(data, fast) which builds the IRKB/NEC-style frame from bytes (nodes do the framing on
-board, so the serial line stays short). airtime accounting is handled inside send().
+Both expose send(codes) where codes is a list of +mark/-space microseconds, send_bytes(data, fast)
+which builds the IRKB/NEC-style frame from bytes, and send_nec(addr, cmd) for a classic NEC frame.
+Nodes do the framing on board so the serial line stays short: prefer send_bytes/send_nec over
+send(), which a 2.5 KB-RAM AVR node can only take for short bursts. airtime accounting is handled
+inside send().
 """
 import glob, os, sys, time
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -43,6 +46,8 @@ class TiqiaaTx:
         time.sleep(0.02 + 0.1 * air)   # it acks slightly before the last pulses are out
     def send_bytes(self, data, fast=True):
         self.send(frame_codes(data, fast))
+    def send_nec(self, addr, cmd):
+        self.send_bytes(bytes([addr & 0xFF, ~addr & 0xFF, cmd & 0xFF, ~cmd & 0xFF]), fast=False)
 
 class NodeTx:
     name = 'node'
@@ -63,11 +68,13 @@ class NodeTx:
     def send(self, codes):
         self._ok('raw ' + ' '.join(str(c) for c in codes))
     def send_bytes(self, data, fast=True):
-        if fast: self._ok('irkb ' + bytes(data).hex())
-        else: self.send(frame_codes(data, fast=False))
+        self._ok(('irkb ' if fast else 'necb ') + bytes(data).hex())
+    def send_nec(self, addr, cmd):
+        self._ok(f'nec {addr & 0xFF} {cmd & 0xFF}')
 
 def node_ports():
-    return sorted(glob.glob('/dev/serial/by-id/*XIAO*') + glob.glob('/dev/serial/by-id/*Seeed*')) or sorted(glob.glob('/dev/ttyACM*'))
+    byid = [g for pat in ('*XIAO*', '*Seeed*', '*Arduino*', '*DFRobot*') for g in glob.glob('/dev/serial/by-id/' + pat)]
+    return sorted(set(byid)) or sorted(glob.glob('/dev/ttyACM*'))
 
 def open_tx(spec=None):
     spec = spec or os.environ.get('IRKVM_TX', 'auto')

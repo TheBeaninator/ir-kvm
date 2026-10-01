@@ -25,16 +25,18 @@ receivers on one blaster.
 
 | Part | Notes |
 |---|---|
-| IR transmitter on the control machine | Either **a XIAO RP2040 node with an IR LED on D9** (same firmware, node id 255 = blaster only), or a Tiqiaa "Tview" USB IR transceiver (`lsusb`: `10c4:8468 Silicon Labs Tview`, ~$8, the ZaZaRemote phone-app blaster; vendor HID, no kernel driver, driven with pyusb). |
+| IR transmitter on the control machine | Either **a XIAO RP2040 or ATmega32U4 (DFRobot Beetle) node with an IR LED on D9** (same firmware, node id 255 = blaster only), or a Tiqiaa "Tview" USB IR transceiver (`lsusb`: `10c4:8468 Silicon Labs Tview`, ~$8, the ZaZaRemote phone-app blaster; vendor HID, no kernel driver, driven with pyusb). |
 | IR LED + driver (for the transmitter node) | 940 nm IR LED, NPN transistor (2N2222/BC337/S8050), 1 kΩ base resistor, LED series resistor sized for ~100 mA pulses from 5V (~33 Ω). |
 | 5-to-1 HDMI switch with IR remote | Ours answers NEC address `0x80`; codes in `codes.json`. Any IR-controlled switch works once you find its codes (see `irprobe.py`). |
 | USB HDMI capture stick | Anything V4L2 sees. Tested: MacroSilicon MS2109 (`534d:2109 USB Video`), the $10 "USB 3.0 HDMI Video Capture" stick. It is USB 2 inside: 1080p10 or 720p30 are clean, 1080p30 / 720p60 overrun the bus. |
-| Seeed XIAO RP2040 **or** XIAO ESP32S3 (one per target) | Same footprint and pinout. RP2040 is the recommended one: no WiFi/Bluetooth on the board at all. |
+| Seeed XIAO RP2040 **or** XIAO ESP32S3 **or** an ATmega32U4 board (one per target) | XIAOs share a footprint and pinout. RP2040 is the recommended one: no WiFi/Bluetooth on the board at all. The 32U4 (DFRobot Beetle, Arduino Micro/Leonardo, Pro Micro) is the cheapest radio-free option and also transmits. |
 | CH0038K / any 38 kHz 3-pin IR receiver (one per XIAO) | VS1838B, TSOP38238, CHQ1838 etc. all work. Active-low output. |
 
-### Wiring the receiver to the XIAO
+### Wiring the receiver to the XIAO / Beetle
 
 USB-C at the top, looking at the top of the board, the right column is `5V, GND, 3V3, D10, ...`.
+On the DFRobot Beetle the pads are labelled; it breaks out D9, D10, D11 and 3V3/5V/GND, so the
+wiring below is identical.
 Receiver (lens facing you, legs down) is usually `OUT, GND, VCC` left to right; check your part.
 
 ```
@@ -45,7 +47,7 @@ receiver VCC ─▶ 3V3
 
 Point the dome at the transmitter. Range is a few metres; the transmitter is not fussy about aim.
 
-### Wiring the IR LED (transmitter node, RP2040 only)
+### Wiring the IR LED (transmitter node, RP2040 or 32U4)
 
 ```
 D9 (GPIO4) ─ 1 kΩ ─ base of NPN
@@ -89,7 +91,7 @@ Convention: HDMI input *N* carries the machine whose XIAO has node id *N*. Node 
 
 ## Flash a receiver
 
-One sketch, two boards. Uses [arduino-cli](https://arduino.github.io/arduino-cli/).
+One sketch, three boards. Uses [arduino-cli](https://arduino.github.io/arduino-cli/).
 
 **XIAO RP2040** (core `rp2040:rp2040` from
 `https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`):
@@ -114,12 +116,30 @@ arduino-cli upload  --fqbn esp32:esp32:XIAO_ESP32S3:USBMode=default,CDCOnBoot=de
 The first ESP32S3 upload attempt often fails while the board re-enumerates into its bootloader;
 just run it again.
 
+**DFRobot Beetle / Arduino Micro / Leonardo / Pro Micro** (ATmega32U4, core `arduino:avr`, no
+third-party index needed; the Beetle enumerates as `2341:8037 Arduino Micro`):
+
+```
+cd irkbd-firmware
+arduino-cli core install arduino:avr
+arduino-cli compile --fqbn arduino:avr:micro --output-dir build-avr32u4 .
+arduino-cli upload  --fqbn arduino:avr:micro -p /dev/ttyACM0 --input-dir build-avr32u4 .
+```
+
+Uses ~1.3 KB of the 32U4's 2.5 KB RAM. The edge ring is 256 entries (fine: `loop()` drains it as
+the frame arrives) and the `raw` serial command only holds 40 pulses, so on this board the host
+tools use the on-board framing (`irkb`, `necb`, `nec`) which they do anyway. The receiver on D10
+is serviced by a pin-change interrupt (the 32U4 has no INTx on D10), the carrier is Timer1 PWM on
+D9 (OC1A), and the keyboard is a raw report-protocol HID keyboard through the core's HID library.
+If a particular BIOS only enumerates boot-protocol keyboards, that one is the board to swap for an
+RP2040.
+
 Either way, then set the node id over the board's serial port (it keeps it in flash):
 
 ```
 $ python3 -m serial.tools.miniterm /dev/ttyACM0 115200
 id 3          -> node id = 3 (saved)        (255 = blaster only, never types)
-ping          -> irkvm rp2040 id=3 tx=1
+ping          -> irkvm rp2040 id=3 tx=1     (or esp32s3 / avr32u4)
 stat          -> pin=1 edges=... frames=... crcerr=...   (bring-up diagnostics)
 raw on        -> dumps every pulse/space and decoder state transition
 ```
@@ -187,7 +207,7 @@ firmware never initialises its WiFi or Bluetooth, but the hardware is still ther
 | `irkbd.py` | IR keyboard bus sender |
 | `kvm` | `hdmi-switch` + `irkbd.py` in one call |
 | `screen.py` | the V: grab a frame from the capture stick, or serve the latest one from /dev/shm |
-| `irkbd-firmware/` | receiver firmware for XIAO RP2040 / ESP32S3 (Arduino) |
+| `irkbd-firmware/` | receiver firmware for XIAO RP2040 / ESP32S3 / ATmega32U4 (Arduino) |
 | `irsend.py` | send one NEC frame (addr, cmd) |
 | `irprobe.py` | Tk helper for discovering a device's IR codes |
 | `irtx.py` | transmitter abstraction: Tiqiaa dongle or serial node, auto-detected |
