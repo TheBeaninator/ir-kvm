@@ -240,9 +240,16 @@ static void loadCfg() {
   cfgHost = prefs.getString("host", ""); cfgPort = prefs.getUShort("port", 5580);
   cfgMatterNode = prefs.getUShort("mnode", 8); cfgOutlets = prefs.getUChar("outlets", 6);
 }
+static void onWifiEvent(WiFiEvent_t ev, WiFiEventInfo_t info) {
+  if (ev == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) Serial.printf("wifi: disconnected reason=%d\n", (int)info.wifi_sta_disconnected.reason);
+  else if (ev == ARDUINO_EVENT_WIFI_STA_CONNECTED) Serial.println("wifi: associated, waiting for DHCP");
+}
 static void wifiStart() {
-  if (!cfgSsid.length()) return;
-  WiFi.mode(WIFI_STA); WiFi.setSleep(false);
+  if (!cfgSsid.length() || !cfgPass.length()) return;
+  static bool once = false;
+  if (!once) { once = true; WiFi.onEvent(onWifiEvent); WiFi.mode(WIFI_STA); WiFi.setSleep(false); WiFi.persistent(false); }
+  WiFi.disconnect(false, true);
+  delay(100);
   WiFi.begin(cfgSsid.c_str(), cfgPass.c_str());
 }
 static bool startsWith(const char *s, const char *p) { return strncmp(s, p, strlen(p)) == 0; }
@@ -272,6 +279,8 @@ static void serialCommand(char *line) {
     if (sp) { cfgOutlets = atoi(sp + 1); prefs.putUChar("outlets", cfgOutlets); }
     cfgMatterNode = atoi(line + 7); prefs.putUShort("mnode", cfgMatterNode);
     Serial.printf("matter node = %u, outlets 1..%u (saved)\n", cfgMatterNode, cfgOutlets);
+  } else if (!strcmp(line, "wifi")) {
+    Serial.println("wifi: reconnecting"); wifiStart();
   } else if (!strcmp(line, "net")) {
     Serial.printf("wifi ssid=%s status=%d ip=%s rssi=%d  server=%s:%u matter node %u outlets %u\n", cfgSsid.c_str(), (int)WiFi.status(),
                   WiFi.localIP().toString().c_str(), WiFi.RSSI(), cfgHost.c_str(), cfgPort, cfgMatterNode, cfgOutlets);
