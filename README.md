@@ -89,6 +89,41 @@ Convention: HDMI input *N* carries the machine whose XIAO has node id *N*. Node 
 `irkbd.py` uses the US keyboard layout; `\n` = Enter, `\t` = Tab. Chords accept
 `ctrl shift alt gui` (+ `r`-prefixed right-hand versions) and key names like `enter esc f5 up home`.
 
+## Power node (Matter strip over IR)
+
+`irpower-firmware/` is a second sketch for a **XIAO ESP32S3** with the same receiver wiring. It joins
+Wi-Fi and, on an IRKB frame of type 4 addressed to it, switches outlets on the Tapo P304M strip
+through python-matter-server's WebSocket API (`:5580`, tokenless, LAN only, no cloud). Frame:
+`dst, 4<<4|seq, outlet (0 = all), action (0 off, 1 on, 2 toggle), crc8`. Keyboard nodes ignore type 4
+and the power node ignores keyboard frames, so it shares the bus. Duplicate seq is dropped, so
+`--twice` never toggles twice.
+
+```
+cd irpower-firmware
+arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32S3:USBMode=default,CDCOnBoot=default --output-dir build-esp32s3 .
+arduino-cli upload  --fqbn esp32:esp32:XIAO_ESP32S3:USBMode=default,CDCOnBoot=default -p /dev/ttyACM0 --input-dir build-esp32s3 .
+```
+
+Configure over serial once (kept in flash; nothing is baked into the binary):
+
+```
+id 200                     IR node id of the power node
+ssid MyNetwork             pass secret
+server 192.168.0.32 5580   the matter-server
+matter 8 6                 strip's Matter node id, number of outlets
+net                        shows Wi-Fi state and IP;  power 2 toggle   drives an outlet directly
+```
+
+Then from the control machine:
+
+```
+irpower.py --node 200 --twice on               # every outlet
+irpower.py --node 200 --twice off --outlet 3
+```
+
+This node is the one place Wi-Fi is allowed in the system: it only ever *sends* commands to the
+Matter controller and nothing on it can type.
+
 ## Flash a receiver
 
 One sketch, three boards. Uses [arduino-cli](https://arduino.github.io/arduino-cli/).
@@ -208,6 +243,7 @@ firmware never initialises its WiFi or Bluetooth, but the hardware is still ther
 | `kvm` | `hdmi-switch` + `irkbd.py` in one call |
 | `screen.py` | the V: grab a frame from the capture stick, or serve the latest one from /dev/shm |
 | `irkbd-firmware/` | receiver firmware for XIAO RP2040 / ESP32S3 / ATmega32U4 (Arduino) |
+| `irpower-firmware/`, `irpower.py` | Wi-Fi power node (XIAO ESP32S3) that drives the Matter strip on IR frame type 4 |
 | `irsend.py` | send one NEC frame (addr, cmd) |
 | `irprobe.py` | Tk helper for discovering a device's IR codes |
 | `irtx.py` | transmitter abstraction: Tiqiaa dongle or serial node, auto-detected |

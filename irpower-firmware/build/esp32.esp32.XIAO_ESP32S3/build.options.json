@@ -1,0 +1,9 @@
+{
+  "additionalFiles": "",
+  "compiler.optimization_flags": "-Os",
+  "customBuildProperties": "",
+  "fqbn": "esp32:esp32:XIAO_ESP32S3:USBMode=default,CDCOnBoot=default",
+  "hardwareFolders": "/home/dad/.arduino15/packages/esp32/hardware/esp32/3.3.12,/home/dad/.arduino15/packages/esp32/hardware/esp32/3.3.12",
+  "otherLibrariesFolders": "/home/dad/Arduino/libraries",
+  "sketchLocation": "/home/dad/Code/ir-kvm/irpower-firmware"
+}
