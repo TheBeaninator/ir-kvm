@@ -14,7 +14,7 @@ sub "ir-kvm: IR-driven out-of-band KVM for the AI Pod (commands, node convention
   --alias "IR KVM" --alias "hdmi-switch" --alias "irkbd" --alias "screen grab" --alias "capture card" --alias "out-of-band console" \
   -s "How the pod control node sees and types on fleet machines with no agent on them: hdmi-switch N / irkbd --node N / screen.py grab; HDMI input N == XIAO node N; repo github.com/thebeaninator/ir-kvm" \
   -b "$(cat <<'MD'
-# ir-kvm (github.com/thebeaninator/ir-kvm, Apache-2.0; local checkout ~/ir-kvm on the laptop)
+# ir-kvm (github.com/thebeaninator/ir-kvm, Apache-2.0; local checkout ~/Code/ir-kvm on the laptop)
 
 A ~$30 out-of-band KVM built from infrared. One IR transmitter on the control machine drives a
 5-to-1 HDMI switch (output -> USB capture stick) and any number of XIAO "IR keyboard" nodes, one
